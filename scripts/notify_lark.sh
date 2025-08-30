@@ -6,7 +6,7 @@ LARK_WEBHOOK_URL=$(buildkite-agent secret get LARK_WEBHOOK_URL)
 LARK_SIGNING_SECRET=$(buildkite-agent secret get LARK_SIGNING_SECRET)
 
 # 检查部署状态
-if]; then
+if [[ "$BUILDKITE_COMMAND_EXIT_STATUS" == "0" ]]; then
   STATUS="SUCCESS"
   HEADER_COLOR="green"
   STATUS_EMOJI=":white_check_mark:"
@@ -43,7 +43,20 @@ read -r -d '' PAYLOAD << EOM
         "tag": "plain_text"
       }
     },
-    "elements":(${BUILDKITE_REPO}/commit/${BUILDKITE_COMMIT})",
+    "elements": [
+      {
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "content": "**Branch:**\n${BUILDKITE_BRANCH}",
+              "tag": "lark_md"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "content": "**Commit:**\n[${BUILDKITE_COMMIT:0:7}](${BUILDKITE_REPO}/commit/${BUILDKITE_COMMIT})",
               "tag": "lark_md"
             }
           },
@@ -51,6 +64,13 @@ read -r -d '' PAYLOAD << EOM
             "is_short": true,
             "text": {
               "content": "**Status:**\n${STATUS}",
+              "tag": "lark_md"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "content": "**Image:**\n${FULL_IMAGE_NAME}",
               "tag": "lark_md"
             }
           }
@@ -61,7 +81,17 @@ read -r -d '' PAYLOAD << EOM
         "tag": "hr"
       },
       {
-        "actions":,
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "content": "View Build",
+              "tag": "lark_md"
+            },
+            "url": "${BUILDKITE_BUILD_URL}",
+            "type": "default"
+          }
+        ],
         "tag": "action"
       }
     ]
