@@ -25,14 +25,15 @@ steps:
     # 定义依赖关系，确保此步骤在 "pull-image" 成功后才运行
     depends_on: "pull-image"
 
-  # 步骤三：发送成功通知
-  # 仅当构建状态为 'passed' 时运行此步骤
-  - label: ":lark: Notify Success"
-    command: "scripts/notify_lark.sh success"
-    if: build.state == "passed"
+  # 等待部署步骤完成（无论成功失败）
+  - wait: ~
+    continue_on_failure: true
 
-  # 步骤四：发送失败通知
-  # 仅当构建状态为 'failed' 时运行此步骤
-  - label: ":lark: Notify Failure"
-    command: "scripts/notify_lark.sh failure"
-    if: build.state == "failed"
+  # 步骤三：发送通知（无论部署成功失败都会执行）
+  - label: ":lark: Send Notification"
+    key: "notify-result"
+    command: "scripts/notify_lark.sh"
+    depends_on: 
+      - "deploy-app"
+    # 允许在前面步骤失败时仍然执行通知
+    soft_fail: true
