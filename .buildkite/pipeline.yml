@@ -1,0 +1,35 @@
+# .buildkite/pipeline.yml
+
+env:
+  IMAGE_REPO: "ghcr.io/${BUILDKITE_ORGANIZATION_SLUG}/${BUILDKITE_PIPELINE_SLUG}"
+  CONTAINER_NAME: "buildkite-hello-world-go-service"
+
+steps:
+  # 步骤 1: 显式登录
+  - label: "🔑 Login to GHCR"
+    key: "login"
+    if: build.pull_request.id == null
+    command: |
+      echo "--- Logging in to GHCR ---"
+      buildkite-agent secret get GHCR_TOKEN | docker login ghcr.io -u "${BUILDKITE_ORGANIZATION_SLUG}" --password-stdin
+
+  # 步骤 2: 构建和推送镜像
+  - label: "📦 Build and Deploy Image"
+    key: "build"
+    depends_on: "login"
+    if: build.pull_request.id == null
+    command: |
+      set -euo pipefail && \
+      echo "--- Generating Image Tag ---" && \
+      export COMMIT_SHORT_SHA=$$(echo "$${BUILDKITE_COMMIT}" | cut -c1-8) && \
+      export BUILD_DATE=$$(date -u +%Y%m%d) && \
+      export IMAGE_TAG="$${BUILD_DATE}.$${BUILDKITE_BRANCH}.$${COMMIT_SHORT_SHA}" && \
+      export FULL_IMAGE_NAME="$${IMAGE_REPO}:$${IMAGE_TAG}" && \
+      echo "Final Image Tag: $${IMAGE_TAG}" && \
+      echo "Full Image Name: $${FULL_IMAGE_NAME}" && \
+      echo "--- Building image: $${FULL_IMAGE_NAME} ---" && \
+      docker build -t "$${FULL_IMAGE_NAME}" . && \
+      echo "--- Deploying image ${IMAGE_TAG} ---" && \
+      docker ps -q --filter "name=$${CONTAINER_NAME}" | xargs -r docker rm -f && \
+      docker run -d -p 38080:8080 --name "$${CONTAINER_NAME}" --restart always "$${FULL_IMAGE_NAME}" && \
+      echo "✅ Deployment successful!"
