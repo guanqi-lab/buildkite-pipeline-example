@@ -4,20 +4,20 @@ set -euo pipefail
 echo "--- :key: Authenticating with GitHub Container Registry"
 
 # 从 Buildkite Secrets 安全地获取 GitHub PAT
-# 确保您已在 Buildkite 集群中创建了名为 GHCR_TOKEN 的 Secret
-GHCR_TOKEN=$(buildkite-agent secret get GHCR_TOKEN)
-if]; then
+# 确保您已在 Buildkite 集群中创建了名为 GHCR_PAT 的 Secret
+SECRET_GHCR_TOKEN=$(buildkite-agent secret get GHCR_TOKEN)
+if; then
   echo "Error: GHCR_PAT secret not found in Buildkite Secrets."
   exit 1
 fi
 
 # 使用 --password-stdin 以非交互方式安全地登录
-echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+echo "$SECRET_GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
 
 echo "--- :docker: Pulling Docker image"
 
 # IMAGE_TAG 环境变量由 GitHub Actions 触发时传入
-if]; then
+if; then
   echo "Error: IMAGE_TAG environment variable is not set."
   exit 1
 fi
