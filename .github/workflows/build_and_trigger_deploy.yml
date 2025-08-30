@@ -12,6 +12,8 @@ env:
 jobs:
   build-push-and-dispatch:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
     permissions:
       contents: read
       packages: write
@@ -62,13 +64,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-
   trigger-buildkite-deployment:
-    needs: build-docker-image
+    needs: build-push-and-dispatch
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Buildkite Deployment Pipeline
-        uses: "buildkite/trigger-pipeline-action@v2.3.0" [ 28 ]
+        uses: "buildkite/trigger-pipeline-action@v2.3.0"
         with:
           # 必需：拥有 write_builds 权限的 Buildkite API 令牌
           buildkite_api_access_token: ${{ secrets.BUILDKITE_API_TOKEN }}
@@ -88,5 +89,5 @@ jobs:
           # 关键：将构建好的镜像标签作为环境变量传递给 Buildkite 作业
           build_env_vars: |
             {
-              "DOCKER_IMAGE_TAG": "${{ needs.build-docker-image.outputs.image_tag }}"
+              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag }}"
             }
