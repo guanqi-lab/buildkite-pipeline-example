@@ -25,10 +25,13 @@ fi
 FULL_IMAGE_NAME=$(buildkite-agent meta-data get "full_image_name")
 echo "--- :FULL_IMAGE_NAME: $FULL_IMAGE_NAME"
 
+TIMESTAMP=$(date +%s)
+
 # 构造 Lark 消息卡片 JSON 负载
 # 使用 'heredoc' 语法简化多行字符串处理
-read -r -d '' PAYLOAD << EOM
+read -r -d '' PAYLOAD << EOM || true
 {
+  "timestamp": "${TIMESTAMP}",
   "msg_type": "interactive",
   "card": {
     "config": {
