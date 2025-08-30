@@ -6,7 +6,9 @@ LARK_WEBHOOK_URL=$(buildkite-agent secret get LARK_WEBHOOK_URL)
 LARK_SIGNING_SECRET=$(buildkite-agent secret get LARK_SIGNING_SECRET)
 
 # 检查部署状态
-if [[ "$BUILDKITE_COMMAND_EXIT_STATUS" == "0" ]]; then
+# 从 meta-data 读取部署状态，如果不存在则默认为失败
+DEPLOY_STATUS=$(buildkite-agent meta-data get "deploy_status" --default "1")
+if [[ "$DEPLOY_STATUS" == "0" ]]; then
   STATUS="SUCCESS"
   HEADER_COLOR="green"
   STATUS_EMOJI=":white_check_mark:"
