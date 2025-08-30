@@ -4,8 +4,8 @@ set -euo pipefail
 echo "--- :key: Authenticating with GitHub Container Registry"
 
 # 从 Buildkite Secrets 安全地获取 GitHub PAT
-# 确保您已在 Buildkite 集群中创建了名为 GHCR_PAT 的 Secret
-GHCR_TOKEN=$(buildkite-agent secret get GHCR_PAT)
+# 确保您已在 Buildkite 集群中创建了名为 GHCR_TOKEN 的 Secret
+GHCR_TOKEN=$(buildkite-agent secret get GHCR_TOKEN)
 if]; then
   echo "Error: GHCR_PAT secret not found in Buildkite Secrets."
   exit 1
