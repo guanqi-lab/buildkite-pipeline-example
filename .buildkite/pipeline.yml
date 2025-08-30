@@ -3,32 +3,36 @@
 
 # 定义流水线级别的环境变量，这些变量对所有步骤都可用。
 env:
-  # 您的 GitHub 用户名，用于 Docker 登录。建议在此处设置或在集群/Agent级别设置。
+  # 您的 GitHub 用户名，用于 Docker 登录。
+  # 建议在此处设置或在集群/Agent级别设置。
   GITHUB_USERNAME: "guanqi-lab"
+  # 您的 GitHub 仓库名称，用于构造镜像URL。
+  GITHUB_REPO_NAME: "buildkite-pipeline-example"
 
 steps:
   # 步骤一：认证并拉取 Docker 镜像
   - label: ":docker: Pull Image"
     key: "pull-image"
-    command: "scripts/pull_and_set_metadata.sh"
-    # 定义此步骤运行在哪些 Agent 上，例如具有 docker 能力的 Agent
-    agents:
-      queue: "deployment-agents"
+    command: "scripts/pull_image.sh"
 
   # 等待步骤：确保上一步成功完成后再继续
   - wait
 
   # 步骤二：执行部署
   - label: ":rocket: Deploy Application"
-    key: "deployment-step"
+    key: "deploy-app"
     command: "scripts/deploy.sh"
     # 定义依赖关系，确保此步骤在 "pull-image" 成功后才运行
     depends_on: "pull-image"
-    agents:
-      queue: "deployment-agents"
-    # 使用插件机制附加一个 post-command 钩子，用于发送通知
-    # 注意：这里的插件地址是示例，您需要指向一个包含钩子脚本的私有插件仓库或使用其他钩子机制
-    plugins:
-      - git@github.com:your-org/buildkite-hooks.git#main:
-          hooks:
-            post-command: "scripts/notify_lark.sh"
+
+  # 步骤三：发送成功通知
+  # 仅当构建状态为 'passed' 时运行此步骤
+  - label: ":lark: Notify Success"
+    command: "scripts/notify_lark.sh success"
+    if: build.state == "passed"
+
+  # 步骤四：发送失败通知
+  # 仅当构建状态为 'failed' 时运行此步骤
+  - label: ":lark: Notify Failure"
+    command: "scripts/notify_lark.sh failure"
+    if: build.state == "failed"
