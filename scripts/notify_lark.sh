@@ -23,18 +23,13 @@ fi
 
 # 获取构建上下文信息
 FULL_IMAGE_NAME=$(buildkite-agent meta-data get "full_image_name")
-echo "--- :FULL_IMAGE_NAME: $DEPLOY_STATUS"
-
-# 生成时间戳和签名（如果启用了签名校验）
-TIMESTAMP=$(date +%s)
-SIGN=$(echo -n -e "${TIMESTAMP}\n${LARK_SIGNING_SECRET}" | openssl dgst -sha256 -hmac "${LARK_SIGNING_SECRET}" -binary | base64)
+echo "--- :FULL_IMAGE_NAME: $FULL_IMAGE_NAME"
 
 # 构造 Lark 消息卡片 JSON 负载
 # 使用 'heredoc' 语法简化多行字符串处理
 read -r -d '' PAYLOAD << EOM
 {
   "timestamp": "${TIMESTAMP}",
-  "sign": "${SIGN}",
   "msg_type": "interactive",
   "card": {
     "config": {
