@@ -17,18 +17,17 @@ echo "$SECRET_GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --passwor
 echo "--- :docker: Pulling Docker image"
 
 # IMAGE_TAG 环境变量由 GitHub Actions 触发时传入
-if [[ -z "${IMAGE_TAG:-}" ]]; then
+if [[ -z "${DOCKER_IMAGE_TAG:-}" ]]; then
   echo "Error: IMAGE_TAG environment variable is not set."
   exit 1
 fi
 
 # 构造完整的镜像名称
-FULL_IMAGE_NAME="ghcr.io/${GITHUB_USERNAME}/${GITHUB_REPO_NAME}:${IMAGE_TAG}"
-echo "Image to pull: $FULL_IMAGE_NAME"
+echo "Image to pull: $DOCKER_IMAGE_TAG"
 
 # 拉取镜像
-docker pull "$FULL_IMAGE_NAME"
+docker pull "$DOCKER_IMAGE_TAG"
 
 echo "--- :buildkite: Storing image name in build metadata"
 # 将完整的镜像名称存入 meta-data，供后续部署步骤使用
-buildkite-agent meta-data set "full_image_name" "$FULL_IMAGE_NAME"
+buildkite-agent meta-data set "full_image_name" "$DOCKER_IMAGE_TAG"
