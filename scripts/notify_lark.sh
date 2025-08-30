@@ -8,6 +8,7 @@ LARK_SIGNING_SECRET=$(buildkite-agent secret get LARK_SIGNING_SECRET)
 # 检查部署状态
 # 从 meta-data 读取部署状态，如果不存在则默认为失败
 DEPLOY_STATUS=$(buildkite-agent meta-data get "deploy_status" --default "1")
+echo "--- :从 meta-data 读取部署状态: $DEPLOY_STATUS"
 if [[ "$DEPLOY_STATUS" == "0" ]]; then
   STATUS="SUCCESS"
   HEADER_COLOR="green"
@@ -22,6 +23,7 @@ fi
 
 # 获取构建上下文信息
 FULL_IMAGE_NAME=$(buildkite-agent meta-data get "full_image_name")
+echo "--- :FULL_IMAGE_NAME: $DEPLOY_STATUS"
 
 # 生成时间戳和签名（如果启用了签名校验）
 TIMESTAMP=$(date +%s)
