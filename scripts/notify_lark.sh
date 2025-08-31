@@ -63,6 +63,10 @@ echo "--- :FULL_IMAGE_NAME: $FULL_IMAGE_NAME"
 REPO_URL=$(convert_git_url_to_https "${BUILDKITE_REPO:-}")
 echo "--- :转换后的仓库URL: $REPO_URL"
 
+# 获取仓库名称，优先使用 GitHub Actions 传递的环境变量
+REPO_NAME="${GITHUB_REPOSITORY:-${BUILDKITE_PIPELINE_SLUG:-Unknown Repository}}"
+echo "--- :仓库名称: $REPO_NAME"
+
 # 获取 commit 详细信息
 COMMIT_AUTHOR_NAME=$(safe_git_command "git show -s --format='%an' '${BUILDKITE_COMMIT:-HEAD}'" "${BUILDKITE_BUILD_AUTHOR_EMAIL:-Unknown}")
 COMMIT_MESSAGE="${BUILDKITE_MESSAGE:-$(safe_git_command "git show -s --format='%s' '${BUILDKITE_COMMIT:-HEAD}'" "No commit message")}"
@@ -93,6 +97,21 @@ read -r -d '' PAYLOAD << EOM || true
       }
     },
     "elements": [
+      {
+        "fields": [
+          {
+            "is_short": false,
+            "text": {
+              "content": "**仓库 Repository:**\\n[${REPO_NAME}](${REPO_URL})",
+              "tag": "lark_md"
+            }
+          }
+        ],
+        "tag": "div"
+      },
+      {
+        "tag": "hr"
+      },
       {
         "fields": [
           {
