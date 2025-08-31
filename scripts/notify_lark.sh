@@ -1,6 +1,40 @@
 #!/bin/bash
 set -euo pipefail
 
+# 函数：将 Git SSH URL 转换为 HTTPS URL
+convert_git_url_to_https() {
+  local git_url="$1"
+  
+  # 如果已经是 HTTPS URL，直接返回去掉 .git 后缀
+  if [[ "$git_url" =~ ^https:// ]]; then
+    echo "${git_url%.git}"
+    return
+  fi
+  
+  # 转换 SSH 格式到 HTTPS 格式
+  # git@github.com:user/repo.git -> https://github.com/user/repo
+  if [[ "$git_url" =~ git@([^:]+):(.+)\.git$ ]]; then
+    local host="${BASH_REMATCH[1]}"
+    local path="${BASH_REMATCH[2]}"
+    echo "https://$host/$path"
+  else
+    # 如果格式不匹配，返回原始 URL（去掉 .git 后缀）
+    echo "${git_url%.git}"
+  fi
+}
+
+# 函数：安全地执行 git 命令并返回结果
+safe_git_command() {
+  local git_cmd="$1"
+  local default_value="${2:-Unknown}"
+  
+  if command -v git &> /dev/null && [[ -d .git ]]; then
+    eval "$git_cmd" 2>/dev/null || echo "$default_value"
+  else
+    echo "$default_value"
+  fi
+}
+
 # 从 Buildkite Secrets 获取 Lark 凭证
 LARK_WEBHOOK_URL=$(buildkite-agent secret get LARK_WEBHOOK_URL)
 LARK_SIGNING_SECRET=$(buildkite-agent secret get LARK_SIGNING_SECRET)
@@ -12,18 +46,32 @@ echo "--- :从 meta-data 读取部署状态: $DEPLOY_STATUS"
 if [[ "$DEPLOY_STATUS" == "0" ]]; then
   STATUS="SUCCESS"
   HEADER_COLOR="green"
-  STATUS_EMOJI=":white_check_mark:"
+  STATUS_EMOJI="✅"  # Unicode emoji for success
   MESSAGE_TITLE="Deployment Succeeded"
 else
   STATUS="FAILED"
   HEADER_COLOR="red"
-  STATUS_EMOJI=":x:"
+  STATUS_EMOJI="❌"  # Unicode emoji for failure
   MESSAGE_TITLE="Deployment Failed"
 fi
 
 # 获取构建上下文信息
 FULL_IMAGE_NAME=$(buildkite-agent meta-data get "full_image_name")
 echo "--- :FULL_IMAGE_NAME: $FULL_IMAGE_NAME"
+
+# 获取 Git 仓库信息并转换 URL 格式
+REPO_URL=$(convert_git_url_to_https "${BUILDKITE_REPO:-}")
+echo "--- :转换后的仓库URL: $REPO_URL"
+
+# 获取 commit 详细信息
+COMMIT_AUTHOR_NAME=$(safe_git_command "git show -s --format='%an' '${BUILDKITE_COMMIT:-HEAD}'" "${BUILDKITE_BUILD_AUTHOR_EMAIL:-Unknown}")
+COMMIT_MESSAGE="${BUILDKITE_MESSAGE:-$(safe_git_command "git show -s --format='%s' '${BUILDKITE_COMMIT:-HEAD}'" "No commit message")}"
+COMMIT_TIMESTAMP=$(safe_git_command "git show -s --format='%ci' '${BUILDKITE_COMMIT:-HEAD}'" "Unknown")
+COMMIT_SHORT_SHA="${BUILDKITE_COMMIT:0:7}"
+
+echo "--- :Commit作者: $COMMIT_AUTHOR_NAME"
+echo "--- :Commit信息: $COMMIT_MESSAGE"
+echo "--- :Commit时间: $COMMIT_TIMESTAMP"
 
 TIMESTAMP=$(date +%s)
 
@@ -50,28 +98,65 @@ read -r -d '' PAYLOAD << EOM || true
           {
             "is_short": true,
             "text": {
-              "content": "**Branch:**\n${BUILDKITE_BRANCH}",
+              "content": "**分支 Branch:**\\n${BUILDKITE_BRANCH}",
               "tag": "lark_md"
             }
           },
           {
             "is_short": true,
             "text": {
-              "content": "**Commit:**\n[${BUILDKITE_COMMIT:0:7}](${BUILDKITE_REPO}/commit/${BUILDKITE_COMMIT})",
+              "content": "**状态 Status:**\\n${STATUS}",
               "tag": "lark_md"
             }
           },
           {
-            "is_short": true,
+            "is_short": false,
             "text": {
-              "content": "**Status:**\n${STATUS}",
+              "content": "**提交 Commit:**\\n[${COMMIT_SHORT_SHA}](${REPO_URL}/commit/${BUILDKITE_COMMIT})",
+              "tag": "lark_md"
+            }
+          }
+        ],
+        "tag": "div"
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "fields": [
+          {
+            "is_short": false,
+            "text": {
+              "content": "**提交作者 Author:**\\n${COMMIT_AUTHOR_NAME}",
               "tag": "lark_md"
             }
           },
           {
-            "is_short": true,
+            "is_short": false,
             "text": {
-              "content": "**Image:**\n${FULL_IMAGE_NAME}",
+              "content": "**提交时间 Commit Time:**\\n${COMMIT_TIMESTAMP}",
+              "tag": "lark_md"
+            }
+          },
+          {
+            "is_short": false,
+            "text": {
+              "content": "**提交信息 Commit Message:**\\n${COMMIT_MESSAGE}",
+              "tag": "lark_md"
+            }
+          }
+        ],
+        "tag": "div"
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "fields": [
+          {
+            "is_short": false,
+            "text": {
+              "content": "**Docker镜像 Image:**\\n\`${FULL_IMAGE_NAME}\`",
               "tag": "lark_md"
             }
           }
@@ -86,10 +171,19 @@ read -r -d '' PAYLOAD << EOM || true
           {
             "tag": "button",
             "text": {
-              "content": "View Build",
+              "content": "查看构建 View Build",
               "tag": "lark_md"
             },
             "url": "${BUILDKITE_BUILD_URL}",
+            "type": "default"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "content": "查看提交 View Commit",
+              "tag": "lark_md"
+            },
+            "url": "${REPO_URL}/commit/${BUILDKITE_COMMIT}",
             "type": "default"
           }
         ],
@@ -101,4 +195,25 @@ read -r -d '' PAYLOAD << EOM || true
 EOM
 
 # 发送 POST 请求到 Lark Webhook
-curl -X POST -H "Content-Type: application/json" -d "${PAYLOAD}" "${LARK_WEBHOOK_URL}"
+echo "--- :发送 Lark 通知中..."
+
+if [[ -z "$LARK_WEBHOOK_URL" ]]; then
+  echo "⚠️  警告：LARK_WEBHOOK_URL 未设置，跳过通知发送"
+  exit 0
+fi
+
+# 使用 curl 发送请求并检查结果
+HTTP_STATUS=$(curl -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "${PAYLOAD}" "${LARK_WEBHOOK_URL}" -s -o /tmp/lark_response.log)
+
+if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+  echo "✅ Lark 通知发送成功！(HTTP $HTTP_STATUS)"
+else
+  echo "❌ Lark 通知发送失败！(HTTP $HTTP_STATUS)"
+  echo "响应内容："
+  cat /tmp/lark_response.log 2>/dev/null || echo "无响应内容"
+  # 不要因为通知失败而让整个构建失败
+  echo "⚠️  通知发送失败，但不影响构建状态"
+fi
+
+# 清理临时文件
+rm -f /tmp/lark_response.log
