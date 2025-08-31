@@ -68,6 +68,25 @@ jobs:
     needs: build-push-and-dispatch
     runs-on: ubuntu-latest
     steps:
+      # 重新检出代码以获取 Git 信息
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 获取 commit 信息用于 Buildkite 消息
+      - name: Get commit info for Buildkite
+        id: commit_info
+        run: |
+          # 获取 commit 作者
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an')
+          # 获取 commit 信息，处理特殊字符
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s')
+          # 构建 Buildkite 消息
+          BUILDKITE_MESSAGE="${COMMIT_MESSAGE}"
+          echo "buildkite_message=${BUILDKITE_MESSAGE}" >> $GITHUB_OUTPUT
+          echo "构建的 Buildkite 消息: ${BUILDKITE_MESSAGE}"
+
       - name: Trigger Buildkite Deployment Pipeline
         uses: "buildkite/trigger-pipeline-action@v2.3.0"
         with:
@@ -83,8 +102,8 @@ jobs:
           # 确保 Buildkite 在正确的 git 分支上操作
           branch: ${{ github.ref_name }}
 
-          # 自定义构建消息
-          message: ":github: Deploy triggered by GitHub Actions"
+          # 使用实际的 commit 信息作为构建消息
+          message: ${{ steps.commit_info.outputs.buildkite_message }}
 
           # 关键：将构建好的镜像标签作为环境变量传递给 Buildkite 作业
           build_env_vars: |
