@@ -35,6 +35,26 @@ safe_git_command() {
   fi
 }
 
+# 函数：获取环境特定配置
+get_env_config() {
+  local config_name="$1"
+  local default_value="${2:-}"
+  
+  # 从 meta-data 获取环境前缀
+  local env_prefix=$(buildkite-agent meta-data get "env_prefix" --default "PROD")
+  local prefixed_name="${env_prefix}_${config_name}"
+  
+  # 优先获取带前缀的配置，如果不存在则获取通用配置
+  local result=$(buildkite-agent secret get "$prefixed_name" 2>/dev/null || buildkite-agent secret get "$config_name" 2>/dev/null || echo "$default_value")
+  echo "$result"
+}
+
+# 函数：获取共用密钥
+get_shared_secret() {
+  local secret_name="$1"
+  buildkite-agent secret get "$secret_name"
+}
+
 # 从 Buildkite Secrets 获取 Lark 凭证（使用共用配置）
 LARK_WEBHOOK_URL=$(get_shared_secret "LARK_WEBHOOK_URL")
 LARK_SIGNING_SECRET=$(get_shared_secret "LARK_SIGNING_SECRET")
