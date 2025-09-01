@@ -35,24 +35,37 @@ safe_git_command() {
   fi
 }
 
-# 从 Buildkite Secrets 获取 Lark 凭证
-LARK_WEBHOOK_URL=$(buildkite-agent secret get LARK_WEBHOOK_URL)
-LARK_SIGNING_SECRET=$(buildkite-agent secret get LARK_SIGNING_SECRET)
+# 从 Buildkite Secrets 获取 Lark 凭证（使用共用配置）
+LARK_WEBHOOK_URL=$(get_shared_secret "LARK_WEBHOOK_URL")
+LARK_SIGNING_SECRET=$(get_shared_secret "LARK_SIGNING_SECRET")
+
+# 获取环境信息
+DEPLOY_ENVIRONMENT=$(buildkite-agent meta-data get "deploy_environment" --default "production")
+ENV_NAME=$(buildkite-agent meta-data get "env_name" --default "生产环境")
+ENV_EMOJI=$(buildkite-agent meta-data get "env_emoji" --default "🚀")
+
+echo "--- :通知环境: ${ENV_EMOJI} ${ENV_NAME}"
 
 # 检查部署状态
 # 从 meta-data 读取部署状态，如果不存在则默认为失败
 DEPLOY_STATUS=$(buildkite-agent meta-data get "deploy_status" --default "1")
 echo "--- :从 meta-data 读取部署状态: $DEPLOY_STATUS"
+
 if [[ "$DEPLOY_STATUS" == "0" ]]; then
   STATUS="SUCCESS"
-  HEADER_COLOR="green"
+  # 根据环境设置不同的成功主题色
+  if [[ "${DEPLOY_ENVIRONMENT}" == "test" ]]; then
+    HEADER_COLOR="blue"  # 测试环境使用蓝色
+  else
+    HEADER_COLOR="green" # 生产环境使用绿色
+  fi
   STATUS_EMOJI="✅"  # Unicode emoji for success
-  MESSAGE_TITLE="Deployment Succeeded"
+  MESSAGE_TITLE="${ENV_EMOJI} ${ENV_NAME} Deployment Succeeded"
 else
   STATUS="FAILED"
   HEADER_COLOR="red"
   STATUS_EMOJI="❌"  # Unicode emoji for failure
-  MESSAGE_TITLE="Deployment Failed"
+  MESSAGE_TITLE="${ENV_EMOJI} ${ENV_NAME} Deployment Failed"
 fi
 
 # 获取构建上下文信息
@@ -103,6 +116,13 @@ read -r -d '' PAYLOAD << EOM || true
             "is_short": false,
             "text": {
               "content": "**仓库 Repository:**\\n[${REPO_NAME}](${REPO_URL})",
+              "tag": "lark_md"
+            }
+          },
+          {
+            "is_short": false,
+            "text": {
+              "content": "**环境 Environment:**\\n${ENV_EMOJI} ${ENV_NAME}",
               "tag": "lark_md"
             }
           }

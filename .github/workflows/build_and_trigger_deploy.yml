@@ -2,7 +2,7 @@ name: CICD - Build and Deploy Docker Image
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dev" ]  # 支持多环境部署
     tags: [ 'v*.*.*' ]
 
 env:
@@ -87,6 +87,28 @@ jobs:
           echo "buildkite_message=${BUILDKITE_MESSAGE}" >> $GITHUB_OUTPUT
           echo "构建的 Buildkite 消息: ${BUILDKITE_MESSAGE}"
 
+      # 环境检测和配置
+      - name: Detect Environment
+        id: env_detect
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "env_prefix=PROD" >> $GITHUB_OUTPUT
+            echo "env_emoji=🚀" >> $GITHUB_OUTPUT
+            echo "env_name=生产环境" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+            echo "environment=test" >> $GITHUB_OUTPUT
+            echo "env_prefix=TEST" >> $GITHUB_OUTPUT
+            echo "env_emoji=🧪" >> $GITHUB_OUTPUT
+            echo "env_name=测试环境" >> $GITHUB_OUTPUT
+          else
+            echo "environment=unknown" >> $GITHUB_OUTPUT
+            echo "env_prefix=DEV" >> $GITHUB_OUTPUT
+            echo "env_emoji=❓" >> $GITHUB_OUTPUT
+            echo "env_name=未知环境" >> $GITHUB_OUTPUT
+          fi
+          echo "检测到环境: $(cat $GITHUB_OUTPUT | grep environment= | cut -d= -f2)"
+
       - name: Trigger Buildkite Deployment Pipeline
         uses: "buildkite/trigger-pipeline-action@v2.3.0"
         with:
@@ -108,5 +130,10 @@ jobs:
           # 关键：将构建好的镜像标签作为环境变量传递给 Buildkite 作业
           build_env_vars: |
             {
-              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag }}"
+              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag }}",
+              "GITHUB_REPOSITORY": "${{ github.repository }}",
+              "DEPLOY_ENVIRONMENT": "${{ steps.env_detect.outputs.environment }}",
+              "ENV_PREFIX": "${{ steps.env_detect.outputs.env_prefix }}",
+              "ENV_EMOJI": "${{ steps.env_detect.outputs.env_emoji }}",
+              "ENV_NAME": "${{ steps.env_detect.outputs.env_name }}"
             }
