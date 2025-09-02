@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
+      image_tag_single: ${{ steps.extract_single_tag.outputs.single_tag }}
     permissions:
       contents: read
       packages: write
@@ -60,6 +61,15 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      # 6. 提取单个镜像标签用于 Buildkite
+      - name: Extract single image tag
+        id: extract_single_tag
+        run: |
+          # 从多行标签中提取第一个标签
+          SINGLE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          echo "single_tag=${SINGLE_TAG}" >> $GITHUB_OUTPUT
+          echo "提取的单个标签: ${SINGLE_TAG}"
+
   trigger-buildkite-deployment:
     needs: build-push-and-dispatch
     runs-on: ubuntu-latest
@@ -90,5 +100,5 @@ jobs:
           # 只传递必要的镜像信息，环境判断由 Buildkite 处理
           build_env_vars: |
             {
-              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag }}"
+              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag_single }}"
             }
