@@ -12,49 +12,6 @@ env:
   TEST_CONFIG_PREFIX: "TEST_"   # 测试环境配置前缀
 
 steps:
-  # Step 0: 环境路由决策 - 根据分支自动判断并设置动态队列
-  - label: "Environment Routing"
-    key: "env-routing"
-    command: |
-      echo "--- 环境路由决策"
-      
-      # 根据分支名称自动判断环境 (仅支持 main 和 dev)
-      if [[ "${BUILDKITE_BRANCH}" == "main" ]]; then
-        # main 分支 -> 生产环境
-        DEPLOY_ENVIRONMENT="production"
-        AGENT_QUEUE="${PROD_AGENT_QUEUE}"
-        CONFIG_PREFIX="${PROD_CONFIG_PREFIX}"
-        echo "检测到 main 分支，部署到生产环境"
-      elif [[ "${BUILDKITE_BRANCH}" == "dev" ]]; then
-        # dev 分支 -> 测试环境  
-        DEPLOY_ENVIRONMENT="test"
-        AGENT_QUEUE="${TEST_AGENT_QUEUE}"
-        CONFIG_PREFIX="${TEST_CONFIG_PREFIX}"
-        echo "检测到 dev 分支，部署到测试环境"
-      else
-        # 不支持的分支
-        echo "不支持的分支: ${BUILDKITE_BRANCH}"
-        echo "仅支持 main 分支(生产环境) 和 dev 分支(测试环境)"
-        exit 1
-      fi
-      
-      echo "目标环境: ${DEPLOY_ENVIRONMENT}"
-      echo "Agent队列: ${AGENT_QUEUE}"
-      echo "配置前缀: ${CONFIG_PREFIX}"
-      
-      # 保存路由信息到 meta-data
-      buildkite-agent meta-data set "deploy_environment" "${DEPLOY_ENVIRONMENT}"
-      buildkite-agent meta-data set "config_prefix" "${CONFIG_PREFIX}"
-      buildkite-agent meta-data set "agent_queue" "${AGENT_QUEUE}"
-      
-      # 设置环境变量供后续步骤使用
-      buildkite-agent env set "CURRENT_AGENT_QUEUE" "${AGENT_QUEUE}"
-      
-      echo "环境路由配置完成"
-
-  # 等待环境检测完成
-  - wait
-
   # Step 1: 拉取镜像 (统一逻辑，动态队列)
   - label: "Pull Image"
     key: "pull-image"

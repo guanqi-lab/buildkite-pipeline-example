@@ -117,6 +117,41 @@ jobs:
             echo "✗ BUILDKITE_PIPELINE_SLUG: 未设置"
           fi
 
+      # 环境路由决策 - 根据分支确定环境和队列
+      - name: Environment Routing
+        id: env_routing
+        run: |
+          echo "=== 环境路由决策 ==="
+          
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            # main 分支 -> 生产环境
+            DEPLOY_ENVIRONMENT="production"
+            AGENT_QUEUE="prod_server"
+            CONFIG_PREFIX="PROD_"
+            echo "检测到 main 分支，部署到生产环境"
+          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+            # dev 分支 -> 测试环境
+            DEPLOY_ENVIRONMENT="test"
+            AGENT_QUEUE="test_server" 
+            CONFIG_PREFIX="TEST_"
+            echo "检测到 dev 分支，部署到测试环境"
+          else
+            # 不支持的分支
+            echo "❌ 不支持的分支: ${{ github.ref_name }}"
+            echo "仅支持 main 分支(生产环境) 和 dev 分支(测试环境)"
+            exit 1
+          fi
+          
+          echo "目标环境: ${DEPLOY_ENVIRONMENT}"
+          echo "Agent队列: ${AGENT_QUEUE}"
+          echo "配置前缀: ${CONFIG_PREFIX}"
+          
+          # 输出环境变量供后续步骤使用
+          echo "deploy_environment=${DEPLOY_ENVIRONMENT}" >> $GITHUB_OUTPUT
+          echo "agent_queue=${AGENT_QUEUE}" >> $GITHUB_OUTPUT  
+          echo "config_prefix=${CONFIG_PREFIX}" >> $GITHUB_OUTPUT
+          echo "环境路由配置完成"
+
       # 触发 Buildkite Pipeline
       - name: Trigger Buildkite Deployment Pipeline
         uses: "buildkite/trigger-pipeline-action@v2.3.0"
@@ -126,8 +161,17 @@ jobs:
           commit: ${{ github.sha }}
           branch: ${{ github.ref_name }}
           message: ${{ steps.commit_info.outputs.buildkite_message }}
-          # 只传递必要的镜像信息，环境判断由 Buildkite 处理
+          # 传递环境信息和配置到 Buildkite
           build_env_vars: |
             {
-              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag_single }}"
+              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag_single }}",
+              "DEPLOY_ENVIRONMENT": "${{ steps.env_routing.outputs.deploy_environment }}",
+              "CONFIG_PREFIX": "${{ steps.env_routing.outputs.config_prefix }}",
+              "AGENT_QUEUE": "${{ steps.env_routing.outputs.agent_queue }}"
+            }
+          build_meta_data: |
+            {
+              "deploy_environment": "${{ steps.env_routing.outputs.deploy_environment }}",
+              "config_prefix": "${{ steps.env_routing.outputs.config_prefix }}",
+              "agent_queue": "${{ steps.env_routing.outputs.agent_queue }}"
             }
