@@ -88,6 +88,35 @@ jobs:
           echo "buildkite_message=${COMMIT_MESSAGE}" >> $GITHUB_OUTPUT
           echo "构建的 Buildkite 消息: ${COMMIT_MESSAGE}"
 
+      # 调试：显示将要使用的配置
+      - name: Debug Buildkite configuration
+        run: |
+          echo "=== Buildkite 调试信息 ==="
+          echo "Pipeline: ${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}/${{ secrets.BUILDKITE_PIPELINE_SLUG }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Message: ${{ steps.commit_info.outputs.buildkite_message }}"
+          echo "Image Tag: ${{ needs.build-push-and-dispatch.outputs.image_tag_single }}"
+          
+          # 验证 secrets 是否存在（不显示实际值）
+          if [[ -n "${{ secrets.BUILDKITE_API_TOKEN }}" ]]; then
+            echo "✓ BUILDKITE_API_TOKEN: 已设置"
+          else
+            echo "✗ BUILDKITE_API_TOKEN: 未设置"
+          fi
+          
+          if [[ -n "${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}" ]]; then
+            echo "✓ BUILDKITE_ORGANIZATION_SLUG: 已设置"
+          else
+            echo "✗ BUILDKITE_ORGANIZATION_SLUG: 未设置"
+          fi
+          
+          if [[ -n "${{ secrets.BUILDKITE_PIPELINE_SLUG }}" ]]; then
+            echo "✓ BUILDKITE_PIPELINE_SLUG: 已设置"
+          else
+            echo "✗ BUILDKITE_PIPELINE_SLUG: 未设置"
+          fi
+
       # 触发 Buildkite Pipeline
       - name: Trigger Buildkite Deployment Pipeline
         uses: "buildkite/trigger-pipeline-action@v2.3.0"
