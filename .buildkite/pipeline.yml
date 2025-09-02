@@ -1,60 +1,87 @@
 #.buildkite/pipeline.yml
-# 该文件定义了在 Buildkite Agent 上执行的完整部署流程。
+# 通用 Buildkite Pipeline 配置 - 基于分支自动判断环境
 
-# 定义流水线级别的环境变量，这些变量对所有步骤都可用。
+# =================== 环境配置 (可根据项目需求修改) ===================
 env:
-  # 您的 GitHub 用户名，用于 Docker 登录。
-  # 建议在此处设置或在集群/Agent级别设置。
-  GITHUB_USERNAME: "guanqi-lab"
-  # 您的 GitHub 仓库名称，用于构造镜像URL。
-  GITHUB_REPO_NAME: "buildkite-pipeline-example"
+  # Agent 队列配置
+  PROD_AGENT_QUEUE: "prod_server"      # 生产环境 Agent 队列名称
+  TEST_AGENT_QUEUE: "test_server"      # 测试环境 Agent 队列名称
+  
+  # 配置前缀设置 (用于配置管理)
+  PROD_CONFIG_PREFIX: "PROD_"   # 生产环境配置前缀
+  TEST_CONFIG_PREFIX: "TEST_"   # 测试环境配置前缀
 
 steps:
-  # 步骤零：环境检测和配置
-  - label: ":gear: Environment Detection"
-    key: "env-detect"
+  # Step 0: 环境路由决策 - 根据分支自动判断并设置动态队列
+  - label: "Environment Routing"
+    key: "env-routing"
     command: |
-      echo "--- :mag: 检测部署环境"
-      echo "分支: ${BUILDKITE_BRANCH}"
-      echo "环境: ${DEPLOY_ENVIRONMENT}"
-      echo "前缀: ${ENV_PREFIX}"
-      echo "标识: ${ENV_EMOJI} ${ENV_NAME}"
+      echo "--- 环境路由决策"
+      
+      # 根据分支名称自动判断环境 (仅支持 main 和 dev)
+      if [[ "${BUILDKITE_BRANCH}" == "main" ]]; then
+        # main 分支 -> 生产环境
+        DEPLOY_ENVIRONMENT="production"
+        AGENT_QUEUE="${PROD_AGENT_QUEUE}"
+        CONFIG_PREFIX="${PROD_CONFIG_PREFIX}"
+        echo "检测到 main 分支，部署到生产环境"
+      elif [[ "${BUILDKITE_BRANCH}" == "dev" ]]; then
+        # dev 分支 -> 测试环境  
+        DEPLOY_ENVIRONMENT="test"
+        AGENT_QUEUE="${TEST_AGENT_QUEUE}"
+        CONFIG_PREFIX="${TEST_CONFIG_PREFIX}"
+        echo "检测到 dev 分支，部署到测试环境"
+      else
+        # 不支持的分支
+        echo "不支持的分支: ${BUILDKITE_BRANCH}"
+        echo "仅支持 main 分支(生产环境) 和 dev 分支(测试环境)"
+        exit 1
+      fi
+      
+      echo "目标环境: ${DEPLOY_ENVIRONMENT}"
+      echo "Agent队列: ${AGENT_QUEUE}"
+      echo "配置前缀: ${CONFIG_PREFIX}"
+      
+      # 保存路由信息到 meta-data
+      buildkite-agent meta-data set "deploy_environment" "${DEPLOY_ENVIRONMENT}"
+      buildkite-agent meta-data set "config_prefix" "${CONFIG_PREFIX}"
+      buildkite-agent meta-data set "agent_queue" "${AGENT_QUEUE}"
       
       # 设置环境变量供后续步骤使用
-      buildkite-agent meta-data set "deploy_environment" "${DEPLOY_ENVIRONMENT:-production}"
-      buildkite-agent meta-data set "env_prefix" "${ENV_PREFIX:-PROD}"
-      buildkite-agent meta-data set "env_emoji" "${ENV_EMOJI:-🚀}"
-      buildkite-agent meta-data set "env_name" "${ENV_NAME:-生产环境}"
+      buildkite-agent env set "CURRENT_AGENT_QUEUE" "${AGENT_QUEUE}"
       
-      echo "✅ 环境信息已保存到 meta-data"
+      echo "环境路由配置完成"
 
   # 等待环境检测完成
   - wait
 
-  # 步骤一：认证并拉取 Docker 镜像
-  - label: ":docker: Pull Image"
+  # Step 1: 拉取镜像 (统一逻辑，动态队列)
+  - label: "Pull Image"
     key: "pull-image"
-    command: "scripts/pull_image.sh"
+    command: "scripts/common/image-puller.sh"
+    agents:
+      queue: "$(buildkite-agent meta-data get 'agent_queue')"
 
-  # 等待步骤：确保上一步成功完成后再继续
+  # 等待镜像拉取完成
   - wait
 
-  # 步骤二：执行部署
-  - label: ":rocket: Deploy Application"
-    key: "deploy-app"
-    command: "scripts/deploy.sh"
-    # 定义依赖关系，确保此步骤在 "pull-image" 成功后才运行
-    depends_on: "pull-image"
+  # Step 2: 应用部署 (统一逻辑，动态队列)
+  - label: "Deploy Application"
+    key: "deploy"
+    command: "scripts/common/deploy-orchestrator.sh"
+    agents:
+      queue: "$(buildkite-agent meta-data get 'agent_queue')"
+    depends_on:
+      - "pull-image"
 
   # 等待部署步骤完成（无论成功失败）
   - wait: ~
     continue_on_failure: true
 
-  # 步骤三：发送通知（无论部署成功失败都会执行）
-  - label: ":lark: Send Notification"
+  # Step 3: 发送通知（无论部署成功失败都会执行）
+  - label: "Send Notification"
     key: "notify-result"
-    command: "scripts/notify_lark.sh"
-    depends_on: 
-      - "deploy-app"
-    # 允许在前面步骤失败时仍然执行通知
+    command: "scripts/common/notifier.sh"
+    agents:
+      queue: "$(buildkite-agent meta-data get 'agent_queue')"
     soft_fail: true
