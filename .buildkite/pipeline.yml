@@ -11,6 +11,9 @@ env:
   PROD_CONFIG_PREFIX: "PROD_"   # 生产环境配置前缀
   TEST_CONFIG_PREFIX: "TEST_"   # 测试环境配置前缀
 
+agents:
+  queue: ${TEST_AGENT_QUEUE}
+
 steps:
   # Step 0: 环境路由决策 - 根据分支自动判断并设置动态队列
   - label: "Environment Routing"
