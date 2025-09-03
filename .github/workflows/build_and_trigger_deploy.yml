@@ -3,7 +3,7 @@ name: CICD - Build and Deploy Docker Image
 on:
   push:
     branches: [ "main", "dev" ]  # 支持 main 和 dev 分支
-    tags: [ 'v*.*.*' ]
+    tags: [ '*' ]
 
 env:
   REGISTRY: ghcr.io
@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
-      image_tag_single: ${{ steps.extract_single_tag.outputs.single_tag }}
     permissions:
       contents: read
       packages: write
@@ -61,15 +60,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      # 6. 提取单个镜像标签用于 Buildkite
-      - name: Extract single image tag
-        id: extract_single_tag
-        run: |
-          # 从多行标签中提取第一个标签
-          SINGLE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          echo "single_tag=${SINGLE_TAG}" >> $GITHUB_OUTPUT
-          echo "提取的单个标签: ${SINGLE_TAG}"
-
   trigger-buildkite-deployment:
     needs: build-push-and-dispatch
     runs-on: ubuntu-latest
@@ -92,29 +82,29 @@ jobs:
       - name: Debug Buildkite configuration
         run: |
           echo "=== Buildkite 调试信息 ==="
-          echo "Pipeline: ${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}/${{ secrets.BUILDKITE_PIPELINE_SLUG }}"
+          echo "Pipeline: ${{ steps.load_config.outputs.buildkite_org_slug }}/${{ steps.load_config.outputs.buildkite_pipeline_slug }}"
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Message: ${{ steps.commit_info.outputs.buildkite_message }}"
-          echo "Image Tag: ${{ needs.build-push-and-dispatch.outputs.image_tag_single }}"
+          echo "Image Tag: ${{ needs.build-push-and-dispatch.outputs.image_tag }}"
           
-          # 验证 secrets 是否存在（不显示实际值）
+          # 验证 secrets 和配置是否存在（不显示实际值）
           if [[ -n "${{ secrets.BUILDKITE_API_TOKEN }}" ]]; then
             echo "✓ BUILDKITE_API_TOKEN: 已设置"
           else
             echo "✗ BUILDKITE_API_TOKEN: 未设置"
           fi
           
-          if [[ -n "${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}" ]]; then
-            echo "✓ BUILDKITE_ORGANIZATION_SLUG: 已设置"
+          if [[ -n "${{ steps.load_config.outputs.buildkite_org_slug }}" ]]; then
+            echo "✓ BUILDKITE_ORGANIZATION_SLUG: 已从配置文件读取"
           else
-            echo "✗ BUILDKITE_ORGANIZATION_SLUG: 未设置"
+            echo "✗ BUILDKITE_ORGANIZATION_SLUG: 配置文件中未设置"
           fi
           
-          if [[ -n "${{ secrets.BUILDKITE_PIPELINE_SLUG }}" ]]; then
-            echo "✓ BUILDKITE_PIPELINE_SLUG: 已设置"
+          if [[ -n "${{ steps.load_config.outputs.buildkite_pipeline_slug }}" ]]; then
+            echo "✓ BUILDKITE_PIPELINE_SLUG: 已从配置文件读取"
           else
-            echo "✗ BUILDKITE_PIPELINE_SLUG: 未设置"
+            echo "✗ BUILDKITE_PIPELINE_SLUG: 配置文件中未设置"
           fi
 
       # 加载配置文件
@@ -141,16 +131,24 @@ jobs:
           DEPLOY_SCRIPT=$(yq '.deployment.custom_deploy_script' "$CONFIG_FILE")
           DEPLOY_TIMEOUT=$(yq '.deployment.timeout' "$CONFIG_FILE")
           
+          # 读取 Buildkite 配置
+          BUILDKITE_ORG_SLUG=$(yq '.buildkite.organization_slug' "$CONFIG_FILE")
+          BUILDKITE_PIPE_SLUG=$(yq '.buildkite.pipeline_slug' "$CONFIG_FILE")
+          
           echo "配置键: $CONFIG_KEYS"
           echo "配置输出文件: $CONFIG_OUTPUT_FILE"  
           echo "部署脚本: $DEPLOY_SCRIPT"
           echo "部署超时: $DEPLOY_TIMEOUT"
+          echo "Buildkite组织: $BUILDKITE_ORG_SLUG"
+          echo "Buildkite Pipeline: $BUILDKITE_PIPE_SLUG"
           
           # 输出配置供后续步骤使用
           echo "config_keys=${CONFIG_KEYS}" >> $GITHUB_OUTPUT
           echo "config_output_file=${CONFIG_OUTPUT_FILE}" >> $GITHUB_OUTPUT
           echo "deploy_script=${DEPLOY_SCRIPT}" >> $GITHUB_OUTPUT
           echo "deploy_timeout=${DEPLOY_TIMEOUT}" >> $GITHUB_OUTPUT
+          echo "buildkite_org_slug=${BUILDKITE_ORG_SLUG}" >> $GITHUB_OUTPUT
+          echo "buildkite_pipeline_slug=${BUILDKITE_PIPE_SLUG}" >> $GITHUB_OUTPUT
           echo "配置文件加载完成"
 
       # 环境路由决策 - 根据分支和配置文件确定环境和队列
@@ -202,14 +200,14 @@ jobs:
         uses: "buildkite/trigger-pipeline-action@v2.3.0"
         with:
           buildkite_api_access_token: ${{ secrets.BUILDKITE_API_TOKEN }}
-          pipeline: "${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}/${{ secrets.BUILDKITE_PIPELINE_SLUG }}"
+          pipeline: "${{ steps.load_config.outputs.buildkite_org_slug }}/${{ steps.load_config.outputs.buildkite_pipeline_slug }}"
           commit: ${{ github.sha }}
           branch: ${{ github.ref_name }}
           message: ${{ steps.commit_info.outputs.buildkite_message }}
           # 传递环境信息和配置到 Buildkite
           build_env_vars: |
             {
-              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag_single }}",
+              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag }}",
               "DEPLOY_ENVIRONMENT": "${{ steps.env_routing.outputs.deploy_environment }}",
               "CONFIG_PREFIX": "${{ steps.env_routing.outputs.config_prefix }}",
               "AGENT_QUEUE": "${{ steps.env_routing.outputs.agent_queue }}",

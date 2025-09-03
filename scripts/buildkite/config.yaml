@@ -7,6 +7,11 @@ environments:
     queue: "test_server"                # 测试环境 Agent 队列
     config_prefix: "TEST_"              # 测试环境配置前缀
 
+# =================== Buildkite 配置 ===================
+buildkite:
+  organization_slug: "guanqi"  # Buildkite 组织名称
+  pipeline_slug: "unipay-deploy"         # Buildkite Pipeline 名称
+
 # =================== 配置管理 ===================
 config_management:
   # 从 Buildkite Secrets 中读取的配置键列表
