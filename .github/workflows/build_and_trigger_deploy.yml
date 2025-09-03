@@ -127,7 +127,7 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
           
-          CONFIG_FILE=".github/workflows/config.yml"
+          CONFIG_FILE="scripts/buildkite/config.yaml"
           if [[ ! -f "$CONFIG_FILE" ]]; then
             echo "❌ 配置文件不存在: $CONFIG_FILE"
             exit 1
@@ -159,7 +159,7 @@ jobs:
         run: |
           echo "=== 环境路由决策 ==="
           
-          CONFIG_FILE=".github/workflows/config.yml"
+          CONFIG_FILE="scripts/buildkite/config.yaml"
           CURRENT_BRANCH="${{ github.ref_name }}"
           
           echo "当前分支: $CURRENT_BRANCH"
