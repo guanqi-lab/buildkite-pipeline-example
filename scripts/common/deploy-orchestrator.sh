@@ -30,9 +30,16 @@ execute_deployment() {
 prepare_configuration() {
     start_step "配置准备"
     
+    # 确保配置管理器有执行权限
+    local config_manager_script="${SCRIPT_DIR}/config-manager.sh"
+    if [[ ! -x "$config_manager_script" ]]; then
+        log_info "设置配置管理器执行权限..."
+        chmod +x "$config_manager_script"
+    fi
+    
     # 调用配置管理器
     log_info "调用配置管理器..."
-    if "${SCRIPT_DIR}/config-manager.sh"; then
+    if "$config_manager_script"; then
         log_success "配置准备完成"
     else
         log_error "配置准备失败"
@@ -56,7 +63,7 @@ execute_business_deploy() {
         exit 1
     fi
     
-    # 检查脚本权限
+    # 确保脚本有执行权限
     if [[ ! -x "$deploy_script" ]]; then
         log_info "设置部署脚本执行权限..."
         chmod +x "$deploy_script"

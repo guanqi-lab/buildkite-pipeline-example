@@ -12,12 +12,23 @@ env:
   TEST_CONFIG_PREFIX: "TEST_"   # 测试环境配置前缀
 
 steps:
+  # Step 0: 初始化权限设置
+  - label: "Initialize Scripts Permissions"
+    key: "init-permissions"
+    command: |
+      echo "--- 设置脚本执行权限"
+      find scripts/ -name "*.sh" -type f -exec chmod +x {} \;
+      echo "✅ 脚本权限设置完成"
+    agents:
+      queue: "${AGENT_QUEUE}"
+
   # Step 1: 拉取镜像 (统一逻辑，使用环境变量指定队列)
   - label: "Pull Image"
     key: "pull-image"
     command: "scripts/common/image-puller.sh"
     agents:
       queue: "${AGENT_QUEUE}"
+    depends_on: "init-permissions"
 
   # 等待镜像拉取完成
   - wait
