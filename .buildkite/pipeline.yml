@@ -23,7 +23,7 @@ steps:
   # Step 1: 拉取镜像 (统一逻辑，使用环境变量指定队列)
   - label: "Pull Image"
     key: "pull-image"
-    command: "scripts/buildkite/common/image-puller.sh"
+    command: "scripts/buildkite/common/pull-image.sh"
     agents:
       queue: "${AGENT_QUEUE}"
     depends_on: "init"
@@ -34,7 +34,7 @@ steps:
   # Step 2: 应用部署 (统一逻辑，使用环境变量指定队列)
   - label: "Deploy Application"
     key: "deploy"
-    command: "scripts/buildkite/common/deploy-orchestrator.sh"
+    command: "scripts/buildkite/common/deploy-control.sh"
     agents:
       queue: "${AGENT_QUEUE}"
     depends_on:
@@ -47,7 +47,7 @@ steps:
   # Step 3: 发送通知（无论部署成功失败都会执行）
   - label: "Send Notification"
     key: "notify-result"
-    command: "scripts/buildkite/common/notifier.sh"
+    command: "scripts/buildkite/common/notify.sh"
     agents:
       queue: "${AGENT_QUEUE}"
     soft_fail: true
