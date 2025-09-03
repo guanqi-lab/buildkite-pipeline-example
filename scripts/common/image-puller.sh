@@ -67,8 +67,4 @@ else
   exit 1
 fi
 
-# 清理旧镜像（可选）
-log_info "清理未使用的镜像..."
-docker image prune -f || true
-
 log_success "镜像拉取流程完成"
