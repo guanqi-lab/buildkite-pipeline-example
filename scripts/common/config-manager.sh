@@ -122,8 +122,8 @@ main() {
     # 显示环境信息
     show_environment
     
-    # 获取配置前缀
-    local config_prefix=$(buildkite-agent meta-data get "config_prefix" --default "PROD_")
+    # 获取配置前缀 - 优先从环境变量，回退到 meta-data
+    local config_prefix="${CONFIG_PREFIX:-$(buildkite-agent meta-data get "config_prefix" --default "PROD_" 2>/dev/null || echo "PROD_")}"
     
     # 获取配置文件路径 (支持环境变量覆盖)
     local config_file="${CONFIG_FILE:-$CONFIG_FILE}"

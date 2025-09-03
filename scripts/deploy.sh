@@ -20,8 +20,8 @@ HOST_PORT_PROD="38080"                  # 生产环境主机端口
 echo "🚀 开始部署 $SERVICE_NAME..."
 
 
-CONFIG_FILE=$(buildkite-agent meta-data get "config_file_path" --default "/tmp/env" 2>/dev/null || echo "/tmp/env")
-echo "从 meta-data 获取配置文件路径: $CONFIG_FILE"
+CONFIG_FILE="${CONFIG_FILE:-$(buildkite-agent meta-data get "config_file_path" --default "/tmp/env" 2>/dev/null || echo "/tmp/env")}"
+echo "使用配置文件路径: $CONFIG_FILE"
 
 
 # 2. 加载配置文件
@@ -41,7 +41,7 @@ fi
 echo "📦 镜像: $FULL_IMAGE_NAME"
 
 # 4. 获取环境信息并设置参数
-DEPLOY_ENVIRONMENT=$(buildkite-agent meta-data get "deploy_environment" --default "production")
+DEPLOY_ENVIRONMENT="${DEPLOY_ENVIRONMENT:-$(buildkite-agent meta-data get "deploy_environment" --default "production" 2>/dev/null || echo "production")}"
 
 if [[ "$DEPLOY_ENVIRONMENT" == "test" ]]; then
     HOST_PORT="$HOST_PORT_TEST"
