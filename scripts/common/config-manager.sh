@@ -11,13 +11,8 @@ CONFIG_FILE="/tmp/env"
 
 # 预定义的配置键列表 (可根据项目需求修改)
 CONFIG_KEYS=(
-    "DATABASE_URL"
-    "REDIS_URL"
-    "API_SECRET"
-    "LARK_WEBHOOK_URL"
-    "JWT_SECRET"
-    "ENCRYPTION_KEY"
     # 可根据项目需要添加更多配置项
+    "ENV_NAME"
 )
 
 # 加载通用工具函数

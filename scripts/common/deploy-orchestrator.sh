@@ -72,10 +72,6 @@ execute_business_deploy() {
     # 执行部署脚本
     log_info "执行业务部署脚本: $deploy_script"
     
-    # 设置环境变量供部署脚本使用
-    export CONFIG_FILE="/tmp/app.env"
-    export DEPLOY_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-    
     # 在项目根目录下执行部署脚本
     cd "$project_root"
     
