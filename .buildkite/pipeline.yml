@@ -1,34 +1,32 @@
 #.buildkite/pipeline.yml
-# 通用 Buildkite Pipeline 配置 - 基于分支自动判断环境
+# 通用 Buildkite Pipeline 配置 - 配置驱动版本
 
-# =================== 环境配置 (可根据项目需求修改) ===================
-env:
-  # Agent 队列配置
-  PROD_AGENT_QUEUE: "prod_server"      # 生产环境 Agent 队列名称
-  TEST_AGENT_QUEUE: "test_server"      # 测试环境 Agent 队列名称
-  
-  # 配置前缀设置 (用于配置管理)
-  PROD_CONFIG_PREFIX: "PROD_"   # 生产环境配置前缀
-  TEST_CONFIG_PREFIX: "TEST_"   # 测试环境配置前缀
+# =================== 环境配置 ===================
+# 配置现在通过 GitHub Actions 从 config.yml 传递
+# 可用的环境变量：
+# - AGENT_QUEUE: Agent 队列名称
+# - CONFIG_PREFIX: 配置前缀
+# - DEPLOY_ENVIRONMENT: 部署环境
+# - CONFIG_KEYS: 配置键列表
+# - CONFIG_OUTPUT_FILE: 配置输出文件路径
+# - DEPLOY_SCRIPT: 自定义部署脚本路径
+# - DEPLOY_TIMEOUT: 部署超时时间
 
 steps:
-  # Step 0: 初始化权限设置
-  - label: "Initialize Scripts Permissions"
-    key: "init-permissions"
-    command: |
-      echo "--- 设置脚本执行权限"
-      find scripts/ -name "*.sh" -type f -exec chmod +x {} \;
-      echo "✅ 脚本权限设置完成"
+  # Step 0: 环境初始化
+  - label: "Environment Initialization"
+    key: "init"
+    command: "scripts/buildkite/common/init.sh"
     agents:
       queue: "${AGENT_QUEUE}"
 
   # Step 1: 拉取镜像 (统一逻辑，使用环境变量指定队列)
   - label: "Pull Image"
     key: "pull-image"
-    command: "scripts/common/image-puller.sh"
+    command: "scripts/buildkite/common/pull-image.sh"
     agents:
       queue: "${AGENT_QUEUE}"
-    depends_on: "init-permissions"
+    depends_on: "init"
 
   # 等待镜像拉取完成
   - wait
@@ -36,7 +34,7 @@ steps:
   # Step 2: 应用部署 (统一逻辑，使用环境变量指定队列)
   - label: "Deploy Application"
     key: "deploy"
-    command: "scripts/common/deploy-orchestrator.sh"
+    command: "scripts/buildkite/common/deploy-control.sh"
     agents:
       queue: "${AGENT_QUEUE}"
     depends_on:
@@ -49,7 +47,7 @@ steps:
   # Step 3: 发送通知（无论部署成功失败都会执行）
   - label: "Send Notification"
     key: "notify-result"
-    command: "scripts/common/notifier.sh"
+    command: "scripts/buildkite/common/notify.sh"
     agents:
       queue: "${AGENT_QUEUE}"
     soft_fail: true
