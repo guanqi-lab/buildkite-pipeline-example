@@ -42,8 +42,6 @@ generate_app_config() {
     
     # 处理环境特定配置
     log_info "处理环境特定配置 (${config_prefix}*)..."
-    local found_count=0
-    local total_count=${#CONFIG_KEYS[@]}
     
     for config_key in "${CONFIG_KEYS[@]}"; do
         local prefixed_key="${config_prefix}${config_key}"
@@ -54,7 +52,6 @@ generate_app_config() {
             if [[ -n "$value" ]]; then
                 echo "${config_key}=${value}" >> "$config_file"
                 log_info "✓ 找到配置: ${config_key}"
-                ((found_count++))
             else
                 log_warning "  配置为空: ${config_key} (${prefixed_key})"
             fi
@@ -62,9 +59,6 @@ generate_app_config() {
             log_info "  跳过配置: ${config_key} (${prefixed_key} 不存在)"
         fi
     done
-    
-    # 显示结果统计
-    log_info "配置处理完成: 找到 ${found_count}/${total_count} 个配置项"
     
     # 验证配置文件
     if [[ -f "$config_file" ]]; then
