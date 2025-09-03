@@ -90,30 +90,6 @@ generate_app_config() {
     fi
 }
 
-# 验证必需配置 (可选功能)
-validate_required_config() {
-    local config_file="${1:-$CONFIG_FILE}"
-    local required_vars=("DATABASE_URL")  # 可根据项目需求调整
-    
-    log_info "验证必需配置..."
-    local missing_count=0
-    
-    for var in "${required_vars[@]}"; do
-        if grep -q "^${var}=" "$config_file" 2>/dev/null; then
-            log_info "✓ 必需配置存在: $var"
-        else
-            log_warning "✗ 缺少必需配置: $var"
-            ((missing_count++))
-        fi
-    done
-    
-    if [[ $missing_count -eq 0 ]]; then
-        log_success "所有必需配置都已找到"
-    else
-        log_warning "缺少 $missing_count 个必需配置项"
-    fi
-}
-
 # =================== 主流程 ===================
 
 main() {
@@ -130,9 +106,6 @@ main() {
     
     # 生成应用配置
     generate_app_config "$config_prefix" "$config_file"
-    
-    # 验证必需配置 (可选)
-    validate_required_config "$config_file"
     
     log_success "配置管理完成"
 }
