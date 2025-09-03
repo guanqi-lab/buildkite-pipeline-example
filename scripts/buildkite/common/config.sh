@@ -1,118 +1,77 @@
 #!/bin/bash
-# 配置管理器 - 优化版
+# 配置管理器 - 简化版本
 # 自动读取Buildkite Secrets中的环境特定配置并生成配置文件
 
 set -euo pipefail
 
-# =================== 配置变量 ===================
+echo "--- 配置管理"
 
-# 默认配置文件路径 (支持环境变量覆盖)
+# 获取配置文件路径 (支持环境变量覆盖)
 CONFIG_FILE="${CONFIG_OUTPUT_FILE:-/tmp/env}"
+echo "配置文件路径: $CONFIG_FILE"
+
+# 获取配置前缀 - 优先从环境变量，回退到 meta-data
+CONFIG_PREFIX="${CONFIG_PREFIX:-$(buildkite-agent meta-data get "config_prefix" --default "PROD_" 2>/dev/null || echo "PROD_")}"
+echo "配置前缀: $CONFIG_PREFIX"
 
 # 配置键列表 (支持从环境变量读取，逗号分隔)
 if [[ -n "${CONFIG_KEYS:-}" ]]; then
     # 从环境变量读取配置键 (GitHub Actions传递的逗号分隔字符串)
     IFS=',' read -ra CONFIG_KEYS_ARRAY <<< "$CONFIG_KEYS"
-else
-    # 默认配置键列表
-    CONFIG_KEYS_ARRAY=(
-        "ENV_NAME"
-    )
 fi
 
-# 加载通用工具函数
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/utils.sh"
+echo "配置键: ${CONFIG_KEYS_ARRAY[*]}"
 
-# =================== 配置生成函数 ===================
+# 确保配置文件目录存在
+CONFIG_DIR=$(dirname "$CONFIG_FILE")
+if [[ ! -d "$CONFIG_DIR" ]]; then
+    echo "创建配置文件目录: $CONFIG_DIR"
+    mkdir -p "$CONFIG_DIR"
+fi
 
-# 生成应用配置文件
-generate_app_config() {
-    local config_prefix="$1"  # 如 PROD_ 或 TEST_
-    local config_file="${2:-$CONFIG_FILE}"
+# 清空配置文件
+> "$CONFIG_FILE"
+
+# 处理环境特定配置
+echo "--- 处理环境特定配置 (${CONFIG_PREFIX}*)"
+
+for config_key in "${CONFIG_KEYS_ARRAY[@]}"; do
+    prefixed_key="${CONFIG_PREFIX}${config_key}"
     
-    log_info "开始生成应用配置文件..."
-    log_info "配置前缀: ${config_prefix}"
-    log_info "配置文件: ${config_file}"
-    
-    # 确保配置文件目录存在
-    local config_dir=$(dirname "$config_file")
-    if [[ ! -d "$config_dir" ]]; then
-        log_info "创建配置文件目录: $config_dir"
-        mkdir -p "$config_dir"
-    fi
-    
-    # 清空配置文件
-    > "$config_file"
-    
-    # 处理环境特定配置
-    log_info "处理环境特定配置 (${config_prefix}*)..."
-    
-    for config_key in "${CONFIG_KEYS_ARRAY[@]}"; do
-        local prefixed_key="${config_prefix}${config_key}"
-        
-        log_info "尝试获取配置: ${prefixed_key}"
-        if buildkite-agent secret get "$prefixed_key" &>/dev/null; then
-            local value=$(buildkite-agent secret get "$prefixed_key" 2>/dev/null)
-            if [[ -n "$value" ]]; then
-                echo "${config_key}=${value}" >> "$config_file"
-                log_info "✓ 找到配置: ${config_key}"
-            else
-                log_warning "  配置为空: ${config_key} (${prefixed_key})"
-            fi
+    echo "尝试获取配置: ${prefixed_key}"
+    if buildkite-agent secret get "$prefixed_key" &>/dev/null; then
+        value=$(buildkite-agent secret get "$prefixed_key" 2>/dev/null)
+        if [[ -n "$value" ]]; then
+            echo "${config_key}=${value}" >> "$CONFIG_FILE"
+            echo "✅ 找到配置: ${config_key}"
         else
-            log_info "  跳过配置: ${config_key} (${prefixed_key} 不存在)"
-        fi
-    done
-    
-    # 验证配置文件
-    if [[ -f "$config_file" ]]; then
-        # 将配置文件路径写入 meta-data 供其他脚本使用
-        buildkite-agent meta-data set "config_file_path" "$config_file"
-        
-        if [[ -s "$config_file" ]]; then
-            log_success "配置文件生成成功: $config_file"
-            log_info "配置文件内容预览:"
-            while IFS='=' read -r key value; do
-                [[ -n "$key" ]] && log_info "  ${key}=***"
-            done < "$config_file"
-            log_info "配置文件路径已保存到 meta-data: config_file_path=$config_file"
-        else
-            log_warning "配置文件为空，但已创建: $config_file"
-            log_info "这可能表示没有找到任何环境特定配置，这是正常情况"
-            log_info "配置文件路径已保存到 meta-data: config_file_path=$config_file"
+            echo "⚠️  配置为空: ${config_key} (${prefixed_key})"
         fi
     else
-        log_error "配置文件创建失败: $config_file"
-        log_error "请检查目录权限: $(dirname "$config_file")"
-        exit 1
+        echo "ℹ️  跳过配置: ${config_key} (${prefixed_key} 不存在)"
     fi
-}
+done
 
-# =================== 主流程 ===================
-
-main() {
-    start_step "配置管理"
+# 验证配置文件
+if [[ -f "$CONFIG_FILE" ]]; then
+    # 将配置文件路径写入 meta-data 供其他脚本使用
+    buildkite-agent meta-data set "config_file_path" "$CONFIG_FILE"
     
-    # 显示环境信息
-    show_environment
+    if [[ -s "$CONFIG_FILE" ]]; then
+        echo "✅ 配置文件生成成功: $CONFIG_FILE"
+        echo "配置文件内容预览:"
+        while IFS='=' read -r key value; do
+            [[ -n "$key" ]] && echo "  ${key}=***"
+        done < "$CONFIG_FILE"
+    else
+        echo "⚠️  配置文件为空，但已创建: $CONFIG_FILE"
+        echo "这可能表示没有找到任何环境特定配置，这是正常情况"
+    fi
     
-    # 获取配置前缀 - 优先从环境变量，回退到 meta-data
-    local config_prefix="${CONFIG_PREFIX:-$(buildkite-agent meta-data get "config_prefix" --default "PROD_" 2>/dev/null || echo "PROD_")}"
-    
-    # 获取配置文件路径 (支持环境变量覆盖)
-    local config_file="${CONFIG_FILE}"
-    
-    log_info "使用配置前缀: $config_prefix"
-    log_info "使用配置文件路径: $config_file"
-    
-    # 生成应用配置
-    generate_app_config "$config_prefix" "$config_file"
-    
-    log_success "配置管理完成"
-}
-
-# 如果脚本被直接执行，则运行主流程
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
+    echo "配置文件路径已保存到 meta-data: config_file_path=$CONFIG_FILE"
+    echo "✅ 配置管理完成"
+else
+    echo "❌ 配置文件创建失败: $CONFIG_FILE"
+    echo "请检查目录权限: $(dirname "$CONFIG_FILE")"
+    exit 1
 fi
