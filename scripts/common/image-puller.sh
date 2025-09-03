@@ -15,11 +15,11 @@ start_step "Docker 镜像拉取"
 # 显示环境信息
 show_environment
 
-# 检查 Docker 服务
-if ! check_docker; then
-  log_error "Docker 服务检查失败"
-  exit 1
-fi
+## 检查 Docker 服务
+#if ! check_docker; then
+#  log_error "Docker 服务检查失败"
+#  exit 1
+#fi
 
 # 获取认证信息
 log_info "获取 GitHub Container Registry 认证信息..."
