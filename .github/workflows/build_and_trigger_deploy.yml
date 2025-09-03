@@ -2,7 +2,7 @@ name: CICD - Build and Deploy Docker Image
 
 on:
   push:
-    branches: [ "main", "dev" ]  # 支持多环境部署
+    branches: [ "main", "dev" ]  # 支持 main 和 dev 分支
     tags: [ 'v*.*.*' ]
 
 env:
@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
+      image_tag_single: ${{ steps.extract_single_tag.outputs.single_tag }}
     permissions:
       contents: read
       packages: write
@@ -33,13 +34,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. 手动获取短 Commit ID 和 Commit Message
+      # 3. 获取 Git 元数据
       - name: Get Git metadata
         id: git_vars
         run: |
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          # 将 commit message 中的换行符等特殊字符进行 URL 编码，以安全地传递
-          echo "commit_message=$(git log -1 --pretty=%s | sed -z 's/\n/\\n/g' | jq -s -R -r @uri)" >> $GITHUB_OUTPUT
 
       # 4. 提取 Docker 元数据
       - name: Extract metadata for Docker
@@ -48,13 +47,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # 规则1: 当事件是推送到一个分支时
-            # 格式: {日期}.{分支名}.{commit_id}
-            type=ref,value={{date 'YYYYMMDD'}}.{{tag}}.${{ steps.git_vars.outputs.sha_short }},event=tag
+            # 分支推送格式: {日期}.{分支名}.{commit_id}
+            type=raw,value={{date 'YYYYMMDD'}}.{{branch}}.${{ steps.git_vars.outputs.sha_short }},event=branch
+            # 标签推送格式: {日期}.{标签}.{commit_id}  
+            type=raw,value={{date 'YYYYMMDD'}}.{{tag}}.${{ steps.git_vars.outputs.sha_short }},event=tag
 
-            # 规则2: 当事件是推送一个 Git 标签时
-            # 格式: {日期}.{TAG号}.{commit_id}
-            type=raw,value={{date 'YYYYMMDD'}}.{{branch}}.${{ steps.git_vars.outputs.sha_short }},event=branch,priority=200
       # 5. 构建并推送 Docker 镜像
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -63,6 +60,15 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # 6. 提取单个镜像标签用于 Buildkite
+      - name: Extract single image tag
+        id: extract_single_tag
+        run: |
+          # 从多行标签中提取第一个标签
+          SINGLE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          echo "single_tag=${SINGLE_TAG}" >> $GITHUB_OUTPUT
+          echo "提取的单个标签: ${SINGLE_TAG}"
 
   trigger-buildkite-deployment:
     needs: build-push-and-dispatch
@@ -74,66 +80,98 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 获取 commit 信息用于 Buildkite 消息
+      # 获取 commit 信息用于 Buildkite
       - name: Get commit info for Buildkite
         id: commit_info
         run: |
-          # 获取 commit 作者
-          COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an')
-          # 获取 commit 信息，处理特殊字符
           COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s')
-          # 构建 Buildkite 消息
-          BUILDKITE_MESSAGE="${COMMIT_MESSAGE}"
-          echo "buildkite_message=${BUILDKITE_MESSAGE}" >> $GITHUB_OUTPUT
-          echo "构建的 Buildkite 消息: ${BUILDKITE_MESSAGE}"
+          echo "buildkite_message=${COMMIT_MESSAGE}" >> $GITHUB_OUTPUT
+          echo "构建的 Buildkite 消息: ${COMMIT_MESSAGE}"
 
-      # 环境检测和配置
-      - name: Detect Environment
-        id: env_detect
+      # 调试：显示将要使用的配置
+      - name: Debug Buildkite configuration
         run: |
-          if [[ "${{ github.ref_name }}" == "main" ]]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "env_prefix=PROD" >> $GITHUB_OUTPUT
-            echo "env_emoji=🚀" >> $GITHUB_OUTPUT
-            echo "env_name=生产环境" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-            echo "environment=test" >> $GITHUB_OUTPUT
-            echo "env_prefix=TEST" >> $GITHUB_OUTPUT
-            echo "env_emoji=🧪" >> $GITHUB_OUTPUT
-            echo "env_name=测试环境" >> $GITHUB_OUTPUT
+          echo "=== Buildkite 调试信息 ==="
+          echo "Pipeline: ${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}/${{ secrets.BUILDKITE_PIPELINE_SLUG }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Message: ${{ steps.commit_info.outputs.buildkite_message }}"
+          echo "Image Tag: ${{ needs.build-push-and-dispatch.outputs.image_tag_single }}"
+          
+          # 验证 secrets 是否存在（不显示实际值）
+          if [[ -n "${{ secrets.BUILDKITE_API_TOKEN }}" ]]; then
+            echo "✓ BUILDKITE_API_TOKEN: 已设置"
           else
-            echo "environment=unknown" >> $GITHUB_OUTPUT
-            echo "env_prefix=DEV" >> $GITHUB_OUTPUT
-            echo "env_emoji=❓" >> $GITHUB_OUTPUT
-            echo "env_name=未知环境" >> $GITHUB_OUTPUT
+            echo "✗ BUILDKITE_API_TOKEN: 未设置"
           fi
-          echo "检测到环境: $(cat $GITHUB_OUTPUT | grep environment= | cut -d= -f2)"
+          
+          if [[ -n "${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}" ]]; then
+            echo "✓ BUILDKITE_ORGANIZATION_SLUG: 已设置"
+          else
+            echo "✗ BUILDKITE_ORGANIZATION_SLUG: 未设置"
+          fi
+          
+          if [[ -n "${{ secrets.BUILDKITE_PIPELINE_SLUG }}" ]]; then
+            echo "✓ BUILDKITE_PIPELINE_SLUG: 已设置"
+          else
+            echo "✗ BUILDKITE_PIPELINE_SLUG: 未设置"
+          fi
 
+      # 环境路由决策 - 根据分支确定环境和队列
+      - name: Environment Routing
+        id: env_routing
+        run: |
+          echo "=== 环境路由决策 ==="
+          
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            # main 分支 -> 生产环境
+            DEPLOY_ENVIRONMENT="production"
+            AGENT_QUEUE="prod_server"
+            CONFIG_PREFIX="PROD_"
+            echo "检测到 main 分支，部署到生产环境"
+          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+            # dev 分支 -> 测试环境
+            DEPLOY_ENVIRONMENT="test"
+            AGENT_QUEUE="test_server" 
+            CONFIG_PREFIX="TEST_"
+            echo "检测到 dev 分支，部署到测试环境"
+          else
+            # 不支持的分支
+            echo "❌ 不支持的分支: ${{ github.ref_name }}"
+            echo "仅支持 main 分支(生产环境) 和 dev 分支(测试环境)"
+            exit 1
+          fi
+          
+          echo "目标环境: ${DEPLOY_ENVIRONMENT}"
+          echo "Agent队列: ${AGENT_QUEUE}"
+          echo "配置前缀: ${CONFIG_PREFIX}"
+          
+          # 输出环境变量供后续步骤使用
+          echo "deploy_environment=${DEPLOY_ENVIRONMENT}" >> $GITHUB_OUTPUT
+          echo "agent_queue=${AGENT_QUEUE}" >> $GITHUB_OUTPUT  
+          echo "config_prefix=${CONFIG_PREFIX}" >> $GITHUB_OUTPUT
+          echo "环境路由配置完成"
+
+      # 触发 Buildkite Pipeline
       - name: Trigger Buildkite Deployment Pipeline
         uses: "buildkite/trigger-pipeline-action@v2.3.0"
         with:
-          # 必需：拥有 write_builds 权限的 Buildkite API 令牌
           buildkite_api_access_token: ${{ secrets.BUILDKITE_API_TOKEN }}
-
-          # 必需：您的 Buildkite 流水线 slug
-          pipeline: "guanqi/unipay-deploy"
-
-          # 将当前提交的 SHA 传递给 Buildkite
+          pipeline: "${{ secrets.BUILDKITE_ORGANIZATION_SLUG }}/${{ secrets.BUILDKITE_PIPELINE_SLUG }}"
           commit: ${{ github.sha }}
-
-          # 确保 Buildkite 在正确的 git 分支上操作
           branch: ${{ github.ref_name }}
-
-          # 使用实际的 commit 信息作为构建消息
           message: ${{ steps.commit_info.outputs.buildkite_message }}
-
-          # 关键：将构建好的镜像标签作为环境变量传递给 Buildkite 作业
+          # 传递环境信息和配置到 Buildkite
           build_env_vars: |
             {
-              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag }}",
-              "GITHUB_REPOSITORY": "${{ github.repository }}",
-              "DEPLOY_ENVIRONMENT": "${{ steps.env_detect.outputs.environment }}",
-              "ENV_PREFIX": "${{ steps.env_detect.outputs.env_prefix }}",
-              "ENV_EMOJI": "${{ steps.env_detect.outputs.env_emoji }}",
-              "ENV_NAME": "${{ steps.env_detect.outputs.env_name }}"
+              "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag_single }}",
+              "DEPLOY_ENVIRONMENT": "${{ steps.env_routing.outputs.deploy_environment }}",
+              "CONFIG_PREFIX": "${{ steps.env_routing.outputs.config_prefix }}",
+              "AGENT_QUEUE": "${{ steps.env_routing.outputs.agent_queue }}"
+            }
+          build_meta_data: |
+            {
+              "deploy_environment": "${{ steps.env_routing.outputs.deploy_environment }}",
+              "config_prefix": "${{ steps.env_routing.outputs.config_prefix }}",
+              "agent_queue": "${{ steps.env_routing.outputs.agent_queue }}"
             }
