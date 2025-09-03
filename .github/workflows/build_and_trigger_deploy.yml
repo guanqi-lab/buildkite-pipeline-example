@@ -3,7 +3,6 @@ name: CICD - Build and Deploy Docker Image
 on:
   push:
     branches: [ "main", "dev" ]  # 支持 main 和 dev 分支
-    tags: [ '*' ]
 
 env:
   REGISTRY: ghcr.io
@@ -48,8 +47,6 @@ jobs:
           tags: |
             # 分支推送格式: {日期}.{分支名}.{commit_id}
             type=raw,value={{date 'YYYYMMDD'}}.{{branch}}.${{ steps.git_vars.outputs.sha_short }},event=branch
-            # 标签推送格式: {日期}.{标签}.{commit_id}  
-            type=raw,value={{date 'YYYYMMDD'}}.{{tag}}.${{ steps.git_vars.outputs.sha_short }},event=tag
 
       # 5. 构建并推送 Docker 镜像
       - name: Build and push Docker image
