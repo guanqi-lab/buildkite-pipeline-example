@@ -117,28 +117,73 @@ jobs:
             echo "✗ BUILDKITE_PIPELINE_SLUG: 未设置"
           fi
 
-      # 环境路由决策 - 根据分支确定环境和队列
-      - name: Environment Routing
+      # 加载配置文件
+      - name: Load Configuration
+        id: load_config
+        run: |
+          echo "=== 加载配置文件 ==="
+          
+          # 安装 yq 用于解析 YAML
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          CONFIG_FILE=".github/workflows/config.yml"
+          if [[ ! -f "$CONFIG_FILE" ]]; then
+            echo "❌ 配置文件不存在: $CONFIG_FILE"
+            exit 1
+          fi
+          
+          echo "✓ 成功加载配置文件: $CONFIG_FILE"
+          
+          # 读取通用配置
+          CONFIG_KEYS=$(yq '.config_management.config_keys | join(",")' "$CONFIG_FILE")
+          CONFIG_OUTPUT_FILE=$(yq '.config_management.config_output_file' "$CONFIG_FILE")
+          DEPLOY_SCRIPT=$(yq '.deployment.custom_deploy_script' "$CONFIG_FILE")
+          DEPLOY_TIMEOUT=$(yq '.deployment.timeout' "$CONFIG_FILE")
+          
+          echo "配置键: $CONFIG_KEYS"
+          echo "配置输出文件: $CONFIG_OUTPUT_FILE"  
+          echo "部署脚本: $DEPLOY_SCRIPT"
+          echo "部署超时: $DEPLOY_TIMEOUT"
+          
+          # 输出配置供后续步骤使用
+          echo "config_keys=${CONFIG_KEYS}" >> $GITHUB_OUTPUT
+          echo "config_output_file=${CONFIG_OUTPUT_FILE}" >> $GITHUB_OUTPUT
+          echo "deploy_script=${DEPLOY_SCRIPT}" >> $GITHUB_OUTPUT
+          echo "deploy_timeout=${DEPLOY_TIMEOUT}" >> $GITHUB_OUTPUT
+          echo "配置文件加载完成"
+
+      # 环境路由决策 - 根据分支和配置文件确定环境和队列
+      - name: Environment Routing  
         id: env_routing
         run: |
           echo "=== 环境路由决策 ==="
           
-          if [[ "${{ github.ref_name }}" == "main" ]]; then
-            # main 分支 -> 生产环境
+          CONFIG_FILE=".github/workflows/config.yml"
+          CURRENT_BRANCH="${{ github.ref_name }}"
+          
+          echo "当前分支: $CURRENT_BRANCH"
+          
+          # 从配置文件中读取分支对应的环境
+          if [[ "$CURRENT_BRANCH" == "main" ]]; then
             DEPLOY_ENVIRONMENT="production"
-            AGENT_QUEUE="prod_server"
-            CONFIG_PREFIX="PROD_"
-            echo "检测到 main 分支，部署到生产环境"
-          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-            # dev 分支 -> 测试环境
+          elif [[ "$CURRENT_BRANCH" == "dev" ]]; then
             DEPLOY_ENVIRONMENT="test"
-            AGENT_QUEUE="test_server" 
-            CONFIG_PREFIX="TEST_"
-            echo "检测到 dev 分支，部署到测试环境"
           else
-            # 不支持的分支
-            echo "❌ 不支持的分支: ${{ github.ref_name }}"
+            echo "❌ 不支持的分支: $CURRENT_BRANCH"
             echo "仅支持 main 分支(生产环境) 和 dev 分支(测试环境)"
+            exit 1
+          fi
+          
+          echo "目标部署环境: $DEPLOY_ENVIRONMENT"
+          
+          # 从配置文件读取环境特定配置
+          AGENT_QUEUE=$(yq ".environments.$DEPLOY_ENVIRONMENT.queue" "$CONFIG_FILE")
+          CONFIG_PREFIX=$(yq ".environments.$DEPLOY_ENVIRONMENT.config_prefix" "$CONFIG_FILE")
+          
+          if [[ "$AGENT_QUEUE" == "null" || "$CONFIG_PREFIX" == "null" ]]; then
+            echo "❌ 配置文件中缺少环境配置: $DEPLOY_ENVIRONMENT"
+            echo "请检查配置文件: $CONFIG_FILE"
             exit 1
           fi
           
@@ -167,11 +212,27 @@ jobs:
               "DOCKER_IMAGE_TAG": "${{ needs.build-push-and-dispatch.outputs.image_tag_single }}",
               "DEPLOY_ENVIRONMENT": "${{ steps.env_routing.outputs.deploy_environment }}",
               "CONFIG_PREFIX": "${{ steps.env_routing.outputs.config_prefix }}",
-              "AGENT_QUEUE": "${{ steps.env_routing.outputs.agent_queue }}"
+              "AGENT_QUEUE": "${{ steps.env_routing.outputs.agent_queue }}",
+              "CONFIG_KEYS": "${{ steps.load_config.outputs.config_keys }}",
+              "CONFIG_OUTPUT_FILE": "${{ steps.load_config.outputs.config_output_file }}",
+              "DEPLOY_SCRIPT": "${{ steps.load_config.outputs.deploy_script }}",
+              "DEPLOY_TIMEOUT": "${{ steps.load_config.outputs.deploy_timeout }}",
+              "GITHUB_REPOSITORY": "${{ github.repository }}",
+              "GITHUB_ACTOR": "${{ github.actor }}",
+              "GITHUB_RUN_ID": "${{ github.run_id }}",
+              "GITHUB_RUN_NUMBER": "${{ github.run_number }}"
             }
           build_meta_data: |
             {
               "deploy_environment": "${{ steps.env_routing.outputs.deploy_environment }}",
               "config_prefix": "${{ steps.env_routing.outputs.config_prefix }}",
-              "agent_queue": "${{ steps.env_routing.outputs.agent_queue }}"
+              "agent_queue": "${{ steps.env_routing.outputs.agent_queue }}",
+              "config_keys": "${{ steps.load_config.outputs.config_keys }}",
+              "config_output_file": "${{ steps.load_config.outputs.config_output_file }}",
+              "deploy_script": "${{ steps.load_config.outputs.deploy_script }}",
+              "deploy_timeout": "${{ steps.load_config.outputs.deploy_timeout }}",
+              "github_repository": "${{ github.repository }}",
+              "github_actor": "${{ github.actor }}",
+              "github_run_id": "${{ github.run_id }}",
+              "github_run_number": "${{ github.run_number }}"
             }

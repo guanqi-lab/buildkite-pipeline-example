@@ -6,14 +6,19 @@ set -euo pipefail
 
 # =================== 配置变量 ===================
 
-# 默认配置文件路径
-CONFIG_FILE="/tmp/env"
+# 默认配置文件路径 (支持环境变量覆盖)
+CONFIG_FILE="${CONFIG_OUTPUT_FILE:-/tmp/env}"
 
-# 预定义的配置键列表 (可根据项目需求修改)
-CONFIG_KEYS=(
-    # 可根据项目需要添加更多配置项
-    "ENV_NAME"
-)
+# 配置键列表 (支持从环境变量读取，逗号分隔)
+if [[ -n "${CONFIG_KEYS:-}" ]]; then
+    # 从环境变量读取配置键 (GitHub Actions传递的逗号分隔字符串)
+    IFS=',' read -ra CONFIG_KEYS_ARRAY <<< "$CONFIG_KEYS"
+else
+    # 默认配置键列表
+    CONFIG_KEYS_ARRAY=(
+        "ENV_NAME"
+    )
+fi
 
 # 加载通用工具函数
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +48,7 @@ generate_app_config() {
     # 处理环境特定配置
     log_info "处理环境特定配置 (${config_prefix}*)..."
     
-    for config_key in "${CONFIG_KEYS[@]}"; do
+    for config_key in "${CONFIG_KEYS_ARRAY[@]}"; do
         local prefixed_key="${config_prefix}${config_key}"
         
         log_info "尝试获取配置: ${prefixed_key}"

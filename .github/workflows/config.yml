@@ -1,0 +1,25 @@
+
+# =================== 环境配置 ===================
+environments:
+  production:
+    queue: "prod_server"                # 生产环境 Agent 队列
+    config_prefix: "PROD_"              # 生产环境配置前缀
+  test:                   # 测试环境对应的分支
+    queue: "test_server"                # 测试环境 Agent 队列
+    config_prefix: "TEST_"              # 测试环境配置前缀
+
+# =================== 配置管理 ===================
+config_management:
+  # 从 Buildkite Secrets 中读取的配置键列表
+  config_keys:
+    - "ENV_NAME"                    # 部署环境名称
+
+  # 配置列表输出文件
+  config_output_file: "/tmp/env"
+
+deployment:
+  # 自定义部署脚本路径（相对于项目根目录）
+  custom_deploy_script: "scripts/buildkite/deploy.sh"
+  
+  # 部署超时时间（秒）
+  timeout: 600
